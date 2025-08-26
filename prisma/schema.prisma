@@ -1,0 +1,31 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("POSTGRES_PRISMA_URL")
+}
+
+model LastUpdate {
+    id        Int      @id @default(autoincrement())
+    timestamp DateTime @updatedAt
+}
+
+model Token {
+    id     String @id
+    symbol String
+
+    marketCap       String
+    avgVolume       Int
+    surgeDay        String
+    surgeVolume     Int
+    surgeMultiplier String
+    priceStart      Decimal
+    priceSurge      Decimal
+    priceToday      Decimal
+    priceChange     Decimal
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
