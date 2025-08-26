@@ -15,6 +15,7 @@ model LastUpdate {
 model Token {
     id     String @id
     symbol String
+    url    String
 
     marketCap       String
     avgVolume       Int

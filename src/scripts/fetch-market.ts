@@ -107,6 +107,7 @@ async function main() {
           results.push({
             id: token.id,
             symbol: token.symbol.toUpperCase(),
+            url: `https://www.coingecko.com/en/coins/${token.id}`,
             marketCap: token.marketCap.toLocaleString(),
             avgVolume: Math.round(avgVolume14d),
             surgeDay: surgeDay,
