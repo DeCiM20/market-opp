@@ -13,7 +13,6 @@ const ENVs = ["development", "production"] as const;
 const EnvSchema = z.object({
   NODE_ENV: z.enum(ENVs).optional().default("development"),
   PORT: z.union([z.string(), z.number()]).optional().transform(transformString).default(4000),
-  REDIS_URL: z.string().optional().default("redis://127.0.0.1:6379"),
   POSTGRES_PRISMA_URL: z.string(),
   COINGECKO_API_KEY: z.string()
 });

@@ -37,5 +37,3 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     return res.status(500).json({ status: 500, message: "Internal Server Error !!!" })
   }
 })
-
-import "~/scripts/fetch-market"

@@ -1,0 +1,11 @@
+services:
+  server:
+    container_name: market-server
+    build:
+      context: .
+      dockerfile: dockerfile
+      target: prod
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "4000:4000"
