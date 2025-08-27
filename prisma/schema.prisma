@@ -25,7 +25,7 @@ model Token {
     priceStart      Decimal
     priceSurge      Decimal
     priceToday      Decimal
-    priceChange     Decimal
+    priceChange     String
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
