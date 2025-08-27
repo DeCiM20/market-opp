@@ -24,6 +24,10 @@ WORKDIR /usr/src/app
 # Install PM2 globally
 RUN npm install -g pm2
 
+# ✅ Copy Prisma schema before generating
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy source & compile TS
 COPY . .
 RUN npm run build

@@ -2,6 +2,7 @@ import { Request, Response } from "express"
 import { db } from "~/utils/db"
 import { dateLocale } from "~/utils/utils"
 import ExcelJS from "exceljs"
+import { Token } from "@prisma/client"
 
 const PAGES = 20
 
@@ -39,7 +40,7 @@ const excel = async (_req: Request, res: Response) => {
   ]
 
   // 4. Add data rows
-  tokens.forEach(token => {
+  tokens.forEach((token: Token) => {
     worksheet.addRow({
       ...token,
       createdAt: dateLocale(token.createdAt),
