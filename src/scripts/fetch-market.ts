@@ -4,19 +4,14 @@ import { db } from "~/utils/db"
 import { env } from "~/utils/env"
 
 const COINGECKO_API = "https://api.coingecko.com/api/v3"
-const PROCESS_INTERVAL = 2 * 60 * 60 * 1000 // 2 HOURS
-const headers = { "x-cg-demo-api-key": env.COINGECKO_API_KEY }
+const PROCESS_INTERVAL = 8 * 60 * 60 * 1000 // 8 HOURS
 
 // ⚡ Bottleneck limiter: ~1 req/sec, up to 5 queued concurrently
 // Adjust minTime depending on your API tier (default free tier ~50 req/min)
 const limiter = new Bottleneck({
-  minTime: 2000, // at least 2s between requests
+  minTime: 2500, // at least 2.5s between requests
   maxConcurrent: 1, // allow up to 1 promises in flight
 })
-
-async function limitedFetch<T>(url: string) {
-  return limiter.schedule(() => axios.get<T>(url, { headers }))
-}
 
 interface Coin {
   id: string
@@ -30,118 +25,125 @@ interface MarketChart {
   total_volumes: number[][]
 }
 
-function formatDate(ts: string | Date | number) {
-  const d = new Date(ts)
-  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0")
-}
+class MarketData {
+  constructor(private headers: Record<string, string>) {}
 
-async function getTopTokens(page: number) {
-  const url = `${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=${page}`
-  const { data } = await limitedFetch<Coin[]>(url)
-  return data.map(coin => ({
-    id: coin.id,
-    symbol: coin.symbol,
-    marketCap: coin.market_cap,
-    currentVolume: coin.total_volume,
-  }))
-}
+  private async limitedFetch<T>(url: string) {
+    return limiter.schedule(() => axios.get<T>(url, { headers: this.headers }))
+  }
 
-async function getToken30DayData(tokenId: string) {
-  const url = `${COINGECKO_API}/coins/${tokenId}/market_chart?vs_currency=usd&days=30&interval=daily`
-  const { data } = await limitedFetch<MarketChart>(url)
+  private formatDate(ts: string | Date | number) {
+    const d = new Date(ts)
+    return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0")
+  }
 
-  const prices: Record<string, number> = {}
-  const volumes: Record<string, number> = {}
+  // Top token list
+  private async list(page: number) {
+    const url = `${COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=${page}`
+    const { data } = await this.limitedFetch<Coin[]>(url)
+    return data.map(coin => ({
+      id: coin.id,
+      symbol: coin.symbol,
+      marketCap: coin.market_cap,
+      currentVolume: coin.total_volume,
+    }))
+  }
 
-  data.prices.forEach(([ts, price]) => {
-    prices[formatDate(ts)] = price
-  })
+  // Market history for token
+  private async history(tokenId: string) {
+    const url = `${COINGECKO_API}/coins/${tokenId}/market_chart?vs_currency=usd&days=30&interval=daily`
+    const { data } = await this.limitedFetch<MarketChart>(url)
 
-  data.total_volumes.forEach(([ts, vol]) => {
-    volumes[formatDate(ts)] = vol
-  })
+    const prices: Record<string, number> = {}
+    const volumes: Record<string, number> = {}
 
-  return { prices, volumes }
-}
+    data.prices.forEach(([ts, price]) => {
+      prices[this.formatDate(ts)] = price
+    })
 
-async function main() {
-  for (let page = 1; page <= 20; page++) {
-    const tokens = await getTopTokens(page)
+    data.total_volumes.forEach(([ts, vol]) => {
+      volumes[this.formatDate(ts)] = vol
+    })
 
-    let results: any[] = []
+    return { prices, volumes }
+  }
 
-    // Fetch tokens in sequence (safe), each request rate-limited by Bottleneck
-    for (const token of tokens) {
-      console.log(`Checking ${token.id}...`)
-      try {
-        const { prices, volumes } = await getToken30DayData(token.id)
+  async run() {
+    for (let page = 1; page <= 20; page++) {
+      const tokens = await this.list(page)
 
-        const dates = Object.keys(prices).sort()
-        if (dates.length < 15) continue
+      let results: any[] = []
 
-        const lastDate = dates[dates.length - 1]
-        const twoWeeksAgoDate = dates[dates.length - 15]
+      // Fetch tokens in sequence (safe), each request rate-limited by Bottleneck
+      for (const token of tokens) {
+        console.log(`Checking ${token.id}...`)
+        try {
+          const { prices, volumes } = await this.history(token.id)
 
-        const avgVolume14d = dates.slice(-15, -1).map(d => volumes[d]).reduce((a, b) => a + b, 0) / 14
+          const dates = Object.keys(prices).sort()
+          if (dates.length < 15) continue
 
-        let surgeDay: string | null = null
-        let surgeMultiplier = 0
-        for (let i = dates.length - 2; i < dates.length; i++) {
-          const d = dates[i]
-          const v = volumes[d]
-          if (v >= 1.5 * avgVolume14d) {
-            surgeDay = d
-            surgeMultiplier = v / avgVolume14d
-            break
+          const lastDate = dates[dates.length - 1]
+          const twoWeeksAgoDate = dates[dates.length - 15]
+
+          const avgVolume14d = dates.slice(-15, -1).map(d => volumes[d]).reduce((a, b) => a + b, 0) / 14
+
+          let surgeDay: string | null = null
+          let surgeMultiplier = 0
+          for (let i = dates.length - 2; i < dates.length; i++) {
+            const d = dates[i]
+            const v = volumes[d]
+            if (v >= 1.5 * avgVolume14d) {
+              surgeDay = d
+              surgeMultiplier = v / avgVolume14d
+              break
+            }
           }
+
+          if (!surgeDay) continue
+
+          const priceSurgeDay = prices[surgeDay]
+          const price2wAgo = prices[twoWeeksAgoDate]
+          const priceNow = prices[lastDate]
+          const priceChange = ((priceSurgeDay - price2wAgo) / price2wAgo) * 100
+
+          if (priceChange >= 20) {
+            results.push({
+              id: token.id,
+              symbol: token.symbol.toUpperCase(),
+              url: `https://www.coingecko.com/en/coins/${token.id}`,
+              marketCap: token.marketCap.toLocaleString(),
+              avgVolume: Math.round(avgVolume14d),
+              surgeDay: surgeDay,
+              surgeVolume: volumes[surgeDay],
+              surgeMultiplier: surgeMultiplier.toFixed(2) + "x",
+              priceStart: price2wAgo,
+              priceSurge: priceSurgeDay,
+              priceToday: priceNow,
+              priceChange: priceChange.toFixed(2) + "%",
+            })
+          }
+        } catch (err) {
+          console.error(`❌ Failed to fetch market data for ${token.id}: ${err}`)
         }
-
-        if (!surgeDay) continue
-
-        const priceSurgeDay = prices[surgeDay]
-        const price2wAgo = prices[twoWeeksAgoDate]
-        const priceNow = prices[lastDate]
-        const priceChange = ((priceSurgeDay - price2wAgo) / price2wAgo) * 100
-
-        if (priceChange >= 20) {
-          results.push({
-            id: token.id,
-            symbol: token.symbol.toUpperCase(),
-            url: `https://www.coingecko.com/en/coins/${token.id}`,
-            marketCap: token.marketCap.toLocaleString(),
-            avgVolume: Math.round(avgVolume14d),
-            surgeDay: surgeDay,
-            surgeVolume: volumes[surgeDay],
-            surgeMultiplier: surgeMultiplier.toFixed(2) + "x",
-            priceStart: price2wAgo,
-            priceSurge: priceSurgeDay,
-            priceToday: priceNow,
-            priceChange: priceChange.toFixed(2) + "%",
-          })
-        }
-      } catch (err) {
-        console.error(`❌ Failed to fetch market data for ${token.id}: ${err}`)
       }
+
+      if (results.length === 0) continue
+      await db.$transaction(results.map(token => db.token.upsert({ where: { id: token.id }, update: token, create: token })))
     }
-
-    if (results.length === 0) continue
-
-    await db.$transaction(
-      results.map(token =>
-        db.token.upsert({
-          where: { id: token.id },
-          update: token,
-          create: token,
-        })
-      )
-    )
   }
 }
 
 async function schedulerLoop() {
   try {
-    await main()
-    await db.lastUpdate.upsert({ where: { id: 1 }, update: { timestamp: new Date() }, create: { id: 1, timestamp: new Date() } })
+    const lu = await db.lastUpdate.findUnique({ where: { id: 1 } })
+    // Check if last update exists and get the next key (if key is 20, reset to 0)
+    const ki = lu ? (lu.key === 20 ? 0 : lu.key + 1) : 0 // key index
+    // Use the next api key based on the last update key
+    const headers = { "x-cg-demo-api-key": env.COINGECKO_API_KEYS[ki] }
+    const mdc = new MarketData(headers)
+    await mdc.run()
+    await db.lastUpdate.upsert({ where: { id: 1 }, update: { timestamp: new Date() }, create: { id: 1, timestamp: new Date(), key: ki } })
   } catch (err) {
     console.error("Scheduler error:", err)
   } finally {

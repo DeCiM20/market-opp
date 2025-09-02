@@ -9,6 +9,7 @@ datasource db {
 
 model LastUpdate {
     id        Int      @id @default(autoincrement())
+    key       Int
     timestamp DateTime @updatedAt
 }
 
