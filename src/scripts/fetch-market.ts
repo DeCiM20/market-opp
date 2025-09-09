@@ -4,7 +4,7 @@ import { db } from "~/utils/db"
 import { env } from "~/utils/env"
 
 const COINGECKO_API = "https://api.coingecko.com/api/v3"
-const PROCESS_INTERVAL = 8 * 60 * 60 * 1000 // 8 HOURS
+const PROCESS_INTERVAL = 16 * 60 * 60 * 1000 // 16 HOURS
 
 // ⚡ Bottleneck limiter: ~1 req/sec, up to 5 queued concurrently
 // Adjust minTime depending on your API tier (default free tier ~50 req/min)
@@ -137,8 +137,8 @@ class MarketData {
 async function schedulerLoop() {
   try {
     const lu = await db.lastUpdate.findUnique({ where: { id: 1 } })
-    // Check if last update exists and get the next key (if key is 20, reset to 0)
-    const ki = lu ? (lu.key === 20 ? 0 : lu.key + 1) : 0 // key index
+    // Check if last update exists and get the next key (if key is 10, reset to 0)
+    const ki = lu ? (lu.key === 11 ? 0 : lu.key + 1) : 0 // key index
     // Use the next api key based on the last update key
     const headers = { "x-cg-demo-api-key": env.COINGECKO_API_KEYS[ki] }
     const mdc = new MarketData(headers)
