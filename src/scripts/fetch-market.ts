@@ -9,8 +9,10 @@ const PROCESS_INTERVAL = 16 * 60 * 60 * 1000 // 16 HOURS
 // ⚡ Bottleneck limiter: ~1 req/sec, up to 5 queued concurrently
 // Adjust minTime depending on your API tier (default free tier ~50 req/min)
 const limiter = new Bottleneck({
-  minTime: 2500, // at least 2.5s between requests
-  maxConcurrent: 1, // allow up to 1 promises in flight
+  reservoir: 1, // allow 1 request
+  reservoirRefreshAmount: 1,
+  reservoirRefreshInterval: 2500, // every 2.5s, refill
+  maxConcurrent: 1,
 })
 
 interface Coin {
