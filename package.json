@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon --exec npx ts-node -T -r tsconfig-paths/register src/index.ts",
-    "start": "sh -c \"npx prisma db push --skip-generate && node dist/index.js\"",
+    "start": "npx prisma db push && pm2-runtime ecosystem.config.js",
     "build": "tspc",
     "start:pm2": "npx prisma db push && pm2-runtime ecosystem.config.js",
     "studio": "prisma studio"
