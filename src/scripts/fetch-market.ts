@@ -1,4 +1,5 @@
 import axios from "axios"
+import { AxiosError } from "axios"
 import Bottleneck from "bottleneck"
 import { db } from "~/utils/db"
 import { env } from "~/utils/env"
@@ -51,8 +52,11 @@ class MarketData {
     }))
   }
 
+  private delay = async (seconds: number) => await new Promise(resolve => setTimeout(resolve, seconds * 1000))
+
   // Market history for token
   private async history(tokenId: string) {
+    await this.delay(1)
     const url = `${COINGECKO_API}/coins/${tokenId}/market_chart?vs_currency=usd&days=30&interval=daily`
     const { data } = await this.limitedFetch<MarketChart>(url)
 
@@ -77,7 +81,8 @@ class MarketData {
       let results: any[] = []
 
       // Fetch tokens in sequence (safe), each request rate-limited by Bottleneck
-      for (const token of tokens) {
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i]
         console.log(`Checking ${token.id}...`)
         try {
           const { prices, volumes } = await this.history(token.id)
@@ -109,13 +114,13 @@ class MarketData {
           const priceNow = prices[lastDate]
           const priceChange = ((priceSurgeDay - price2wAgo) / price2wAgo) * 100
 
-          if (priceChange >= 20) {
+          if (priceChange >= 20 && priceChange < 40) {
             results.push({
               id: token.id,
               symbol: token.symbol.toUpperCase(),
               url: `https://www.coingecko.com/en/coins/${token.id}`,
               marketCap: token.marketCap.toLocaleString(),
-              avgVolume: Math.round(avgVolume14d),
+              avgVolume: Math.round(avgVolume14d).toLocaleString(),
               surgeDay: surgeDay,
               surgeVolume: volumes[surgeDay],
               surgeMultiplier: surgeMultiplier.toFixed(2) + "x",
@@ -126,6 +131,16 @@ class MarketData {
             })
           }
         } catch (err) {
+          if (err instanceof AxiosError) {
+            console.error(`❌ Failed to fetch market data for ${token.id}: ${err}`)
+            if (err.status === 429) {
+              const lu = await db.lastUpdate.findUnique({ where: { id: 1 } })
+              // Check if last update exists and get the next key (if key is 10, reset to 0)
+              const ki = lu ? lu.key === 11 ? 0 : lu.key + 1 : 0 // key index
+              await db.lastUpdate.upsert({ where: { id: 1 }, update: { timestamp: new Date() }, create: { id: 1, timestamp: new Date(), key: ki } })
+              i--;
+            }
+          }
           console.error(`❌ Failed to fetch market data for ${token.id}: ${err}`)
         }
       }
